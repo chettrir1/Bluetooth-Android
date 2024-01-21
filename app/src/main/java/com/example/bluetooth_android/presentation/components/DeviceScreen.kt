@@ -21,14 +21,18 @@ import com.example.bluetooth_android.presentation.BluetoothUiState
 
 @Composable
 fun DeviceScreen(
-    state: BluetoothUiState, onStartScan: () -> Unit, onStopScan: () -> Unit
+    state: BluetoothUiState,
+    onStartScan: () -> Unit,
+    onStopScan: () -> Unit,
+    onStartServer: () -> Unit,
+    onDeviceClicked: (BluetoothDevice) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         BluetoothDeviceList(
             scannedDevices = state.scannedDevices,
             pairedDevices = state.pairedDevices,
             onClick = {
-
+                onDeviceClicked
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -45,6 +49,10 @@ fun DeviceScreen(
 
             Button(onClick = onStopScan) {
                 Text("Stop Scan")
+            }
+
+            Button(onClick = onStartServer) {
+                Text("Start Server")
             }
         }
     }
