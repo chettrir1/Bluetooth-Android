@@ -12,11 +12,14 @@ import android.content.pm.PackageManager
 import com.example.bluetooth_android.domain.chat.BluetoothController
 import com.example.bluetooth_android.domain.chat.BluetoothDeviceDomain
 import com.example.bluetooth_android.domain.chat.ConnectionResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
 import java.io.IOException
 import java.util.UUID
@@ -91,15 +94,38 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
                     shouldLoop = false
                     null
                 }
+                emit(ConnectionResult.ConnectionEstablished)
                 currentServerSocket?.let {
                     currentServerSocket?.close()
                 }
             }
-        }
+        }.onCompletion {
+            closeActiveConnection()
+        }.flowOn(Dispatchers.IO)
     }
 
     override fun connectToDevice(device: BluetoothDeviceDomain): Flow<ConnectionResult> {
-
+        return flow {
+            if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+                throw SecurityException("No Permission for Bluetooth Connect!")
+            }
+            currentClientSocket = bluetoothAdapter
+                ?.getRemoteDevice(device.address)
+                ?.createRfcommSocketToServiceRecord(UUID.fromString(SERVICE_UID))
+            stopDiscovery()
+            currentClientSocket?.let { socket ->
+                try {
+                    socket.connect()
+                    emit(ConnectionResult.ConnectionEstablished)
+                } catch (e: IOException) {
+                    socket.close()
+                    currentClientSocket = null
+                    emit(ConnectionResult.Error("Connection was interrupted!"))
+                }
+            }
+        }.onCompletion {
+            closeActiveConnection()
+        }.flowOn(Dispatchers.IO)
     }
 
     override fun closeActiveConnection() {
