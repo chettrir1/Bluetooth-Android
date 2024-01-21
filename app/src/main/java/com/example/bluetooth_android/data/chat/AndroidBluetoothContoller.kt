@@ -129,11 +129,15 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
     }
 
     override fun closeActiveConnection() {
-        TODO("Not yet implemented")
+        currentClientSocket?.close()
+        currentServerSocket?.close()
+        currentClientSocket = null
+        currentServerSocket = null
     }
 
     override fun release() {
         context.unregisterReceiver(foundDeviceReceiver)
+        closeActiveConnection()
     }
 
     private fun hasPermission(permission: String): Boolean {
