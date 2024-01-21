@@ -4,15 +4,22 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import com.example.bluetooth_android.domain.chat.BluetoothController
 import com.example.bluetooth_android.domain.chat.BluetoothDeviceDomain
+import com.example.bluetooth_android.domain.chat.ConnectionResult
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
+import java.io.IOException
+import java.util.UUID
 
 @SuppressLint("MissingPermission")
 class AndroidBluetoothContoller constructor(private val context: Context) : BluetoothController {
@@ -34,6 +41,9 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
             if (newDevice in devices) devices else devices + newDevice
         }
     }
+
+    private var currentServerSocket: BluetoothServerSocket? = null
+    private var currentClientSocket: BluetoothSocket? = null
 
     init {
         updatePairedDevices()
@@ -64,6 +74,38 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
         bluetoothAdapter?.cancelDiscovery()
     }
 
+    override fun startBluetoothServer(): Flow<ConnectionResult> {
+        return flow {
+            if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+                throw SecurityException("No Permission for Bluetooth Connect!")
+            }
+            currentServerSocket = bluetoothAdapter?.listenUsingRfcommWithServiceRecord(
+                "chat_service", UUID.fromString(SERVICE_UID)
+            )
+
+            var shouldLoop = true
+            while (shouldLoop) {
+                currentClientSocket = try {
+                    currentServerSocket?.accept()
+                } catch (e: IOException) {
+                    shouldLoop = false
+                    null
+                }
+                currentServerSocket?.let {
+                    currentServerSocket?.close()
+                }
+            }
+        }
+    }
+
+    override fun connectToDevice(device: BluetoothDeviceDomain): Flow<ConnectionResult> {
+
+    }
+
+    override fun closeActiveConnection() {
+        TODO("Not yet implemented")
+    }
+
     override fun release() {
         context.unregisterReceiver(foundDeviceReceiver)
     }
@@ -83,4 +125,7 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
             ?.also { devices -> _pairedDevices.update { devices } }
     }
 
+    companion object {
+        const val SERVICE_UID = "550e8400-e29b-41d4-a716-446655440000"
+    }
 }
