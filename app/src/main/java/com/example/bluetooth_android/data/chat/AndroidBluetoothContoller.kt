@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import com.example.bluetooth_android.domain.chat.BluetoothController
 import com.example.bluetooth_android.domain.chat.BluetoothDeviceDomain
+import com.example.bluetooth_android.domain.chat.BluetoothMessage
 import com.example.bluetooth_android.domain.chat.ConnectionResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
@@ -46,6 +48,7 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
         bluetoothManager?.adapter
     }
 
+    private var dataTransferService: BluetoothDataTransferService? = null
     private var currentServerSocket: BluetoothServerSocket? = null
     private var currentClientSocket: BluetoothSocket? = null
 
@@ -130,8 +133,11 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
                     null
                 }
                 emit(ConnectionResult.ConnectionEstablished)
-                currentServerSocket?.let {
+                currentClientSocket?.let {
                     currentServerSocket?.close()
+                    val service = BluetoothDataTransferService(it)
+                    dataTransferService = service
+                    emitAll(service.listenForIncomingMessage())
                 }
             }
         }.onCompletion {
@@ -144,21 +150,19 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
             if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
                 throw SecurityException("No Permission for Bluetooth Connect!")
             }
-            val bluetoothDevice = bluetoothAdapter?.getRemoteDevice(device.address)
-
             currentClientSocket = bluetoothAdapter
                 ?.getRemoteDevice(device.address)
                 ?.createRfcommSocketToServiceRecord(UUID.fromString(SERVICE_UID))
             stopDiscovery()
 
-            if (bluetoothAdapter?.bondedDevices?.contains(bluetoothDevice) == false) {
-
-            }
-
             currentClientSocket?.let { socket ->
                 try {
                     socket.connect()
                     emit(ConnectionResult.ConnectionEstablished)
+                    BluetoothDataTransferService(socket).also {
+                        dataTransferService = it
+                        emitAll(it.listenForIncomingMessage())
+                    }
                 } catch (e: IOException) {
                     socket.close()
                     currentClientSocket = null
@@ -168,6 +172,23 @@ class AndroidBluetoothContoller constructor(private val context: Context) : Blue
         }.onCompletion {
             closeActiveConnection()
         }.flowOn(Dispatchers.IO)
+    }
+
+    override suspend fun trySendMessage(message: String): BluetoothMessage? {
+        if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+            return null
+        }
+        if (dataTransferService == null) {
+            return null
+        }
+        val bluetoothMessage = BluetoothMessage(
+            senderName = bluetoothAdapter?.name ?: "Unknown Name",
+            message = message,
+            isFromLocalUser = true
+        )
+        dataTransferService?.sendMessage(bluetoothMessage.toByteArray())
+
+        return bluetoothMessage
     }
 
     override fun closeActiveConnection() {

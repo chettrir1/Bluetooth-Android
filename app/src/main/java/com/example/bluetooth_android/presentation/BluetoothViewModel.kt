@@ -93,6 +93,7 @@ class BluetoothViewModel @Inject constructor(
                         )
                     }
                 }
+                else -> {}
             }
         }.catch { throwable ->
             bluetoothController.closeActiveConnection()
